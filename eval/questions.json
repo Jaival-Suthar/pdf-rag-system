@@ -1,0 +1,21 @@
+[
+  {
+    "question": "What is this document about?",
+    "expected_answer_contains": "TODO",
+    "expected_doc_id": "TODO",
+    "expected_chunk_keywords": ["TODO"]
+  },
+  {
+    "question": "Which section mentions the main workflow?",
+    "expected_answer_contains": "TODO",
+    "expected_doc_id": "TODO",
+    "expected_chunk_keywords": ["workflow"]
+  },
+  {
+    "question": "What does the document say about setup?",
+    "expected_answer_contains": "TODO",
+    "expected_doc_id": "TODO",
+    "expected_chunk_keywords": ["setup"]
+  }
+]
+
