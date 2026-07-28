@@ -35,37 +35,70 @@ class IngestionPipeline:
     ) -> IngestionResult:
         logger.info(
             "ingestion_started",
-            extra={"doc_id": doc_id, "filename": filename, "source_path": str(pdf_path)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "source_path": str(pdf_path),
+            },
         )
-        logger.info("extraction_started", extra={"doc_id": doc_id, "filename": filename})
+        logger.info(
+            "extraction_started",
+            extra={"doc_id": doc_id, "uploaded_filename": filename},
+        )
         pages = extract_pdf_text(pdf_path)
         logger.info(
             "extraction_completed",
-            extra={"doc_id": doc_id, "filename": filename, "page_count": len(pages)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "page_count": len(pages),
+            },
         )
-        logger.info("chunking_started", extra={"doc_id": doc_id, "filename": filename})
+        logger.info(
+            "chunking_started",
+            extra={"doc_id": doc_id, "uploaded_filename": filename},
+        )
         chunks = self._chunker.chunk_pages(pages)
         if not chunks:
             raise PdfExtractionError("No extractable text was found in the PDF")
         logger.info(
             "chunking_completed",
-            extra={"doc_id": doc_id, "filename": filename, "chunk_count": len(chunks)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "chunk_count": len(chunks),
+            },
         )
 
         logger.info(
             "embedding_started",
-            extra={"doc_id": doc_id, "filename": filename, "chunk_count": len(chunks)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "chunk_count": len(chunks),
+            },
         )
         embeddings = self.embedder.embed_texts([chunk.text for chunk in chunks]) if chunks else []
         logger.info(
             "embedding_completed",
-            extra={"doc_id": doc_id, "filename": filename, "chunk_count": len(embeddings)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "chunk_count": len(embeddings),
+            },
         )
-        logger.info("indexing_started", extra={"doc_id": doc_id, "filename": filename})
+        logger.info(
+            "indexing_started",
+            extra={"doc_id": doc_id, "uploaded_filename": filename},
+        )
         self._indexer.index_chunks(doc_id, document_fingerprint, filename, chunks, embeddings)
         logger.info(
             "indexing_completed",
-            extra={"doc_id": doc_id, "filename": filename, "chunk_count": len(chunks)},
+            extra={
+                "doc_id": doc_id,
+                "uploaded_filename": filename,
+                "chunk_count": len(chunks),
+            },
         )
         return IngestionResult(
             doc_id=doc_id,

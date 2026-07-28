@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -21,6 +22,10 @@ def build_chunk_id(document_fingerprint: str, chunk_index: int, chunk_text: str)
         f"{document_fingerprint}{chunk_index}{chunk_text}".encode()
     ).hexdigest()
     return digest
+
+
+def build_point_id(chunk_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
 
 
 class Indexer:
@@ -60,7 +65,7 @@ class Indexer:
             }
             points.append(
                 qmodels.PointStruct(
-                    id=chunk_id,
+                    id=build_point_id(chunk_id),
                     vector=embedding,
                     payload=payload,
                 )

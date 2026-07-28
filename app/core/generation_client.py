@@ -37,6 +37,8 @@ class GenerationClient:
 
                     text = payload.get("text")
                     if not isinstance(text, str):
+                        text = payload.get("response")
+                    if not isinstance(text, str):
                         raise ValueError("generation provider response missing text")
                     return GenerationResult(text=text)
                 except (httpx.HTTPError, ValueError) as exc:

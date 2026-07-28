@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 
 from qdrant_client.http import models as qmodels
@@ -51,7 +52,7 @@ def test_indexer_uses_document_fingerprint_for_chunk_ids() -> None:
     assert len(vectorstore.points) == 1
     point = vectorstore.points[0]
     assert point.payload is not None
-    assert point.id == expected_id
+    assert point.id == str(uuid.uuid5(uuid.NAMESPACE_URL, expected_id))
     assert point.payload["document_fingerprint"] == "fingerprint-abc"
     assert point.payload["filename"] == "sample.pdf"
     assert point.payload["doc_id"] == "doc-123"
