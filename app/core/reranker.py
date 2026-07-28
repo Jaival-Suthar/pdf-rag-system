@@ -14,8 +14,7 @@ class RankedChunk:
 
 
 class _RerankerModel(Protocol):
-    def predict(self, pairs: list[tuple[str, str]]) -> object:
-        ...
+    def predict(self, pairs: list[tuple[str, str]]) -> object: ...
 
 
 class Reranker:

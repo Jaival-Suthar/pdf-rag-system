@@ -18,9 +18,7 @@ class IndexedChunk:
 
 
 def build_chunk_id(document_fingerprint: str, chunk_index: int, chunk_text: str) -> str:
-    digest = hashlib.sha256(
-        f"{document_fingerprint}{chunk_index}{chunk_text}".encode()
-    ).hexdigest()
+    digest = hashlib.sha256(f"{document_fingerprint}{chunk_index}{chunk_text}".encode()).hexdigest()
     return digest
 
 
@@ -77,5 +75,4 @@ class Indexer:
 
 
 class VectorStoreLike(Protocol):
-    def upsert(self, points: list[qmodels.PointStruct]) -> None:
-        ...
+    def upsert(self, points: list[qmodels.PointStruct]) -> None: ...

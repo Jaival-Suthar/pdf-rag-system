@@ -19,8 +19,7 @@ class RetrievalResult:
 
 
 class EmbedderLike(Protocol):
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        ...
+    def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class Retriever:
