@@ -5,7 +5,6 @@ from pathlib import Path
 
 import httpx
 
-
 BASE_URL = "http://localhost:8000"
 DOC_ID = "5b038ed7-a74c-4b00-9f61-059a11d55b23"
 
