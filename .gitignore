@@ -11,3 +11,6 @@ data/
 .coverage
 htmlcov/
 fixtures/
+
+# Benchmark generated results
+benchmarks/results/
