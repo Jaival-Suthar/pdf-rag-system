@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     prompt_token_budget: int = Field(default=3000, ge=512, le=100000)
     duplicate_upload_policy: Literal["reject", "replace", "allow"] = "reject"
     retrieval_top_k_default: int = Field(default=5, ge=1, le=50)
+    rerank_candidate_k: int = Field(default=20, ge=1, le=100)
     retrieval_similarity_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
 
     def ensure_data_dirs(self) -> None:

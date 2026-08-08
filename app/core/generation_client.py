@@ -50,9 +50,12 @@ class GenerationClient:
         raise GenerationProviderError("generation provider request failed") from last_error
 
     def is_reachable(self) -> bool:
+        health_url = self._url.replace("/v1/generate", "/v1/health")
         try:
-            self.generate("healthcheck")
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.get(health_url)
+                response.raise_for_status()
             return True
-        except Exception:
+        except httpx.HTTPError:
             logger.exception("generation provider health check failed")
             return False

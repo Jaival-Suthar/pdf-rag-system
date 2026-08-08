@@ -46,6 +46,7 @@ def chat(request: Request, payload: ChatRequest) -> ChatResponse:
     latency = LatencyMetrics(
         embedding=retrieval_result.embedding_latency_ms,
         retrieval=retrieval_result.retrieval_latency_ms,
+        rerank=retrieval_result.rerank_latency_ms,
         llm=llm_latency_ms,
         total=total_latency_ms,
     )
@@ -69,6 +70,7 @@ def chat(request: Request, payload: ChatRequest) -> ChatResponse:
             "request_id": request_id,
             "embedding_latency_ms": retrieval_result.embedding_latency_ms,
             "retrieval_latency_ms": retrieval_result.retrieval_latency_ms,
+            "rerank_latency_ms": retrieval_result.rerank_latency_ms,
             "llm_latency_ms": llm_latency_ms,
             "total_ms": total_latency_ms,
         },

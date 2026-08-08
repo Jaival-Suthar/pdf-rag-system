@@ -149,6 +149,7 @@ def test_retriever_preserves_order_when_reranking_is_disabled(
         qdrant_url="http://example",
         retrieval_similarity_threshold=0.3,
         re_rank_enabled=False,
+        rerank_candidate_k=5,
     )
     vectorstore = VectorStore(settings)
     retriever = Retriever(settings, _FakeEmbedder(), vectorstore, reranker=_FakeReranker())

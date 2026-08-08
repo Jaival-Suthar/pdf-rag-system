@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
 class LatencyMetrics(BaseModel):
     embedding: int
     retrieval: int
+    rerank: int
     llm: int
     total: int
 

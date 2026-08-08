@@ -17,6 +17,8 @@ services:
       GENERATION_PROVIDER_URL: http://host.docker.internal:4000/v1/generate
       DATA_DIR: /app/data
       EMBEDDING_DEVICE: cpu
+      RE_RANK_ENABLED: "true"
+      RE_RANK_MODEL_NAME: BAAI/bge-reranker-base
     ports:
       - "8000:8000"
     volumes:
