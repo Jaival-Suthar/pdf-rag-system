@@ -48,21 +48,14 @@ class Retriever:
         similarity_threshold: float | None = None,
         filters: RetrievalFilters | None = None,
     ) -> RetrievalResult:
-        effective_top_k = (
-            top_k
-            if top_k is not None
-            else self._settings.retrieval_top_k_default
-        )
+        effective_top_k = top_k if top_k is not None else self._settings.retrieval_top_k_default
 
         if similarity_threshold is None:
             effective_threshold = self._settings.retrieval_similarity_threshold
         else:
             effective_threshold = similarity_threshold
 
-        reranking_enabled = (
-            self._reranker is not None
-            and self._settings.re_rank_enabled
-        )
+        reranking_enabled = self._reranker is not None and self._settings.re_rank_enabled
 
         candidate_k = (
             max(effective_top_k, self._settings.rerank_candidate_k)
@@ -72,9 +65,7 @@ class Retriever:
 
         embedding_start = time.perf_counter()
         query_embedding = self._embedder.embed_texts([query])[0]
-        embedding_latency_ms = int(
-            (time.perf_counter() - embedding_start) * 1000
-        )
+        embedding_latency_ms = int((time.perf_counter() - embedding_start) * 1000)
 
         retrieval_start = time.perf_counter()
         chunks = self._vectorstore.search(
@@ -83,9 +74,7 @@ class Retriever:
             similarity_threshold=effective_threshold,
             filters=filters,
         )
-        retrieval_latency_ms = int(
-            (time.perf_counter() - retrieval_start) * 1000
-        )
+        retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
         rerank_latency_ms = 0
 
@@ -97,9 +86,7 @@ class Retriever:
                 [chunk.text for chunk in chunks],
             )
 
-            rerank_latency_ms = int(
-                (time.perf_counter() - rerank_start) * 1000
-            )
+            rerank_latency_ms = int((time.perf_counter() - rerank_start) * 1000)
 
             chunks = [
                 chunks[ranked_chunk.index]
@@ -119,11 +106,7 @@ class Retriever:
                 "candidate_k": candidate_k,
                 "final_top_k": effective_top_k,
                 "reranker_enabled": reranking_enabled,
-                "total_ms": (
-                    embedding_latency_ms
-                    + retrieval_latency_ms
-                    + rerank_latency_ms
-                ),
+                "total_ms": (embedding_latency_ms + retrieval_latency_ms + rerank_latency_ms),
             },
         )
 
@@ -131,5 +114,5 @@ class Retriever:
             chunks=chunks,
             embedding_latency_ms=embedding_latency_ms,
             retrieval_latency_ms=retrieval_latency_ms,
-            rerank_latency_ms=rerank_latency_ms
+            rerank_latency_ms=rerank_latency_ms,
         )

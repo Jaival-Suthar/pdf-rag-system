@@ -48,7 +48,9 @@ class FakeRetriever:
             section_title="Intro",
             source_path="/tmp/sample.pdf",
         )
-        return RetrievalResult(chunks=[chunk], embedding_latency_ms=3, retrieval_latency_ms=4, rerank_latency_ms=0)
+        return RetrievalResult(
+            chunks=[chunk], embedding_latency_ms=3, retrieval_latency_ms=4, rerank_latency_ms=0
+        )
 
 
 class FakePromptBuilder:
