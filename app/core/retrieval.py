@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.config import Settings
+from app.core.reranker import RankedChunk
 from app.core.vectorstore import RetrievalFilters, RetrievedChunk, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,22 @@ class EmbedderLike(Protocol):
     def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
 
 
+class RerankerLike(Protocol):
+    def rank(self, query: str, passages: list[str]) -> list[RankedChunk]: ...
+
+
 class Retriever:
     def __init__(
         self,
         settings: Settings,
         embedder: EmbedderLike,
         vectorstore: VectorStore,
+        reranker: RerankerLike | None = None,
     ) -> None:
         self._settings = settings
         self._embedder = embedder
         self._vectorstore = vectorstore
+        self._reranker = reranker
 
     def retrieve(
         self,
@@ -57,6 +64,17 @@ class Retriever:
             filters=filters,
         )
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
+
+        if self._reranker is not None and self._settings.re_rank_enabled:
+            ranked_passages = self._reranker.rank(query, [chunk.text for chunk in chunks])
+            chunks = [
+                chunks[ranked_chunk.index]
+                for ranked_chunk in sorted(
+                    ranked_passages,
+                    key=lambda item: item.score,
+                    reverse=True,
+                )
+            ]
 
         logger.info(
             "retrieval_completed",

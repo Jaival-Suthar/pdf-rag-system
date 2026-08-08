@@ -130,7 +130,7 @@ def run_benchmark(sample_pdf: Path, queries: list[str], iterations: int) -> dict
             total_latencies.append((perf_counter() - total_start) * 1000)
 
     report: dict[str, object] = {
-        "upload_latency_ms": asdict(_summarize(upload_latencies)),
+        "local_file_write_latency_ms": asdict(_summarize(upload_latencies)),
         "extraction_latency_ms": asdict(_summarize(extraction_latencies)),
         "embedding_latency_ms": asdict(_summarize(embedding_latencies)),
         "retrieval_latency_ms": asdict(_summarize(retrieval_latencies)),

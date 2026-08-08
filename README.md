@@ -234,12 +234,14 @@ uv run pdf-rag-benchmark --output benchmark-report.json
 
 The benchmark reports:
 
-- upload latency
+- local file-write latency
 - extraction latency
 - embedding latency
 - retrieval latency
 - generation latency
 - total end-to-end latency
+
+This is a local-stage benchmark; its file-write measurement is not an HTTP `POST /v1/upload` latency measurement.
 
 ## Related Projects
 
@@ -251,6 +253,7 @@ The benchmark reports:
 - Generation depends on the external M0 service being available at `GENERATION_PROVIDER_URL`.
 - Qdrant must be running before upload or chat requests can succeed.
 - The repository does not ship a standalone model runtime.
+- Concurrent uploads of the same document fingerprint can race in this milestone because the duplicate check and ingestion write are not atomic.
 
 ## Future Work
 

@@ -52,6 +52,8 @@ def upload_pdf(request: Request, file: UploadFile = File(...)) -> UploadResponse
     if duplicate_exists and settings.duplicate_upload_policy == "reject":
         raise HTTPException(status_code=409, detail="Duplicate PDF upload detected")
 
+    # Concurrent uploads of the same fingerprint can both pass the duplicate check before either
+    # completes ingestion, so this milestone accepts that race window for simplicity.
     if duplicate_exists and settings.duplicate_upload_policy == "replace":
         services.vectorstore.delete_document_fingerprint(document_fingerprint)
 

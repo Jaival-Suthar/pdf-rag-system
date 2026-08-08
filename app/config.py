@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     embedding_version: str = "bge-small-en-v1.5"
     re_rank_enabled: bool = False
     re_rank_model_name: str = "BAAI/bge-reranker-base"
-    request_timeout_seconds: float = Field(default=30.0, ge=1.0)
     generation_timeout_seconds: float = Field(default=30.0, ge=1.0)
     generation_retry_count: int = Field(default=2, ge=0, le=5)
     chunk_max_tokens: int = 500

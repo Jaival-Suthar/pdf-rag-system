@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from app.config import Settings
 from app.core.generation_client import GenerationClient
 from app.core.prompt_builder import PromptBuilder
+from app.core.reranker import Reranker
 from app.core.retrieval import Retriever
 from app.core.vectorstore import VectorStore
 from app.ingestion.embedder import Embedder
@@ -25,7 +26,7 @@ class Services:
     def build(cls, settings: Settings) -> Services:
         embedder = Embedder(settings)
         vectorstore = VectorStore(settings)
-        retriever = Retriever(settings, embedder, vectorstore)
+        retriever = Retriever(settings, embedder, vectorstore, reranker=Reranker(settings))
         prompt_builder = PromptBuilder(settings)
         generation_client = GenerationClient(settings)
         pipeline = IngestionPipeline(settings, vectorstore, embedder)

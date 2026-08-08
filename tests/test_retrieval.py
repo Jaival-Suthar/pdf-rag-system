@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from app.config import Settings
+from app.core.reranker import RankedChunk
 from app.core.retrieval import Retriever
 from app.core.vectorstore import RetrievalFilters, VectorStore, normalize_similarity_score
 
@@ -87,6 +88,17 @@ class _FakeEmbedder:
         return [[float(len(text)), 0.0, 0.0] for text in texts]
 
 
+class _FakeReranker:
+    def rank(self, query: str, passages: list[str]) -> list[RankedChunk]:
+        del query
+        if len(passages) < 2:
+            return [RankedChunk(index=index, score=0.0) for index in range(len(passages))]
+        return [
+            RankedChunk(index=1, score=2.0),
+            RankedChunk(index=0, score=1.0),
+        ]
+
+
 def test_similarity_score_is_normalized() -> None:
     assert normalize_similarity_score(-0.3) == 0.0
     assert normalize_similarity_score(0.4) == 0.4
@@ -120,3 +132,49 @@ def test_retriever_applies_threshold_and_deterministic_order(
     assert result.chunks[1].score == 1.0
     assert fake_client.search_calls
     assert fake_client.search_calls[0]["query_filter"] is not None
+
+
+def test_retriever_preserves_order_when_reranking_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeClient()
+
+    def fake_qdrant_client(url: str) -> _FakeClient:
+        _ = url
+        return fake_client
+
+    monkeypatch.setattr("app.core.vectorstore.QdrantClient", fake_qdrant_client)
+
+    settings = Settings(
+        qdrant_url="http://example",
+        retrieval_similarity_threshold=0.3,
+        re_rank_enabled=False,
+    )
+    vectorstore = VectorStore(settings)
+    retriever = Retriever(settings, _FakeEmbedder(), vectorstore, reranker=_FakeReranker())
+
+    result = retriever.retrieve("query", top_k=2, similarity_threshold=0.3)
+
+    assert [chunk.doc_id for chunk in result.chunks] == ["doc-a", "doc-b"]
+
+
+def test_retriever_uses_reranker_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = _FakeClient()
+
+    def fake_qdrant_client(url: str) -> _FakeClient:
+        _ = url
+        return fake_client
+
+    monkeypatch.setattr("app.core.vectorstore.QdrantClient", fake_qdrant_client)
+
+    settings = Settings(
+        qdrant_url="http://example",
+        retrieval_similarity_threshold=0.3,
+        re_rank_enabled=True,
+    )
+    vectorstore = VectorStore(settings)
+    retriever = Retriever(settings, _FakeEmbedder(), vectorstore, reranker=_FakeReranker())
+
+    result = retriever.retrieve("query", top_k=2, similarity_threshold=0.3)
+
+    assert [chunk.doc_id for chunk in result.chunks] == ["doc-b", "doc-a"]

@@ -18,7 +18,7 @@ from app.services import Services
 class QuestionSpec:
     question: str
     expected_answer_contains: str
-    expected_doc_id: str
+    expected_doc_id: str | None
     expected_chunk_keywords: list[str]
 
 
@@ -65,18 +65,14 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _score_retrieval(question: QuestionSpec, chunks: Sequence[object]) -> tuple[float, float]:
-    keywords = [
-        keyword.lower()
-        for keyword in question.expected_chunk_keywords
-        if keyword and keyword != "TODO"
-    ]
-    if question.expected_doc_id == "TODO" and not keywords:
+    keywords = [keyword.lower() for keyword in question.expected_chunk_keywords if keyword]
+    if question.expected_doc_id is None and not keywords:
         return 0.0, 0.0
     relevant_count = 0
     for chunk in chunks:
         text = getattr(chunk, "text", "").lower()
         doc_id = getattr(chunk, "doc_id", "")
-        if question.expected_doc_id != "TODO" and doc_id != question.expected_doc_id:
+        if question.expected_doc_id is not None and doc_id != question.expected_doc_id:
             continue
         if keywords and not all(keyword in text for keyword in keywords):
             continue
@@ -105,9 +101,7 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
     results: list[QuestionResult] = []
     for item in questions:
         filters = (
-            None
-            if item.expected_doc_id == "TODO"
-            else RetrievalFilters(doc_id=item.expected_doc_id)
+            None if item.expected_doc_id is None else RetrievalFilters(doc_id=item.expected_doc_id)
         )
         retrieval = services.retriever.retrieve(
             item.question,
