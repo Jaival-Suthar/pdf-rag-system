@@ -2,11 +2,34 @@ import csv
 import json
 import time
 from pathlib import Path
+from typing import TypedDict
 
 import httpx
 
 BASE_URL = "http://localhost:8000"
 DOC_ID = "5b038ed7-a74c-4b00-9f61-059a11d55b23"
+
+
+class SourceData(TypedDict, total=False):
+    page_number: int
+    score: float
+    section_title: str | None
+
+
+class LatencyData(TypedDict, total=False):
+    embedding: int
+    retrieval: int
+    rerank: int
+    llm: int
+    total: int
+
+
+class QuestionResult(TypedDict):
+    answer: str
+    sources: list[SourceData]
+    latency_ms: LatencyData
+    wall_clock_ms: float
+
 
 OUTPUT_DIR = Path("benchmarks/results")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -206,7 +229,10 @@ QUESTIONS = [
 ]
 
 
-def run_question(client: httpx.Client, question: str) -> dict:
+def run_question(
+    client: httpx.Client,
+    question: str,
+) -> QuestionResult:
     start = time.perf_counter()
 
     response = client.post(

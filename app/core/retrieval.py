@@ -78,7 +78,7 @@ class Retriever:
 
         rerank_latency_ms = 0
 
-        if reranking_enabled:
+        if reranking_enabled and self._reranker is not None:
             rerank_start = time.perf_counter()
 
             ranked_passages = self._reranker.rank(
