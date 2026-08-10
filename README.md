@@ -1,38 +1,44 @@
 # Knowledge Vault
 
-*A local-first PDF Retrieval-Augmented Generation (RAG) engine.*
+A local-first PDF retrieval engine for source-attributed question answering.
 
-Knowledge Vault turns PDFs into grounded, source-backed answers through semantic retrieval. It forms the retrieval layer of a modular local AI stack while delegating model inference to Inference Lab (M0) over REST.
+Knowledge Vault is Milestone 1 (M1) of a modular local AI stack. It ingests text-layer PDFs, builds searchable chunks, retrieves candidate context from Qdrant, optionally reranks that context with a BGE cross-encoder, and sends source-attributed prompts to Inference Lab (M0) for generation.
 
-This repository implements **Milestone 1 (M1)** of a modular Local AI stack. It is responsible for:
+## M1 Scope
 
-- PDF ingestion
-- text extraction
-- recursive chunking
+M1 covers:
+
+- PDF ingestion and document fingerprinting
+- page-level text extraction with PyMuPDF
+- recursive token-aware chunking
 - embedding generation
-- vector indexing in Qdrant
-- semantic retrieval
-- prompt construction
-- REST-based generation orchestration
+- Qdrant vector indexing and retrieval
+- similarity and metadata filtering
+- optional BGE cross-encoder reranking
+- source-attributed prompt construction
+- REST generation orchestration
+- offline evaluation
+- stage-level latency benchmarking
 
-It is intentionally separate from Milestone 0, [Inference Lab](https://github.com/Jaival-Suthar/inference-lab), which provides the local LLM runtime, model management, benchmarking, telemetry, and the generation REST API.
-
-Inference Lab (M0) provides the model-serving layer over REST. Knowledge Vault prepares the context, retrieves relevant passages, and sends prompts to M0 for generation. The split is deliberate and gives each layer independent versioning, deployment, scaling, reuse, and room for future milestones.
+M1 does not attempt to solve OCR or scanned PDFs, multi-source ingestion, large-scale distributed retrieval, or production-scale evaluation infrastructure.
 
 ## At A Glance
 
-- **🎯 Problem:** turn uploaded PDFs into queryable, source-backed context for local AI applications.
-- **🧩 Purpose:** keep document ingestion, retrieval, and prompt orchestration separate from model serving.
-- **🏗 Architecture:** Knowledge Vault handles retrieval; Inference Lab handles inference.
-- **⚙ Responsibilities:** M1 ingests, chunks, embeds, indexes, retrieves, and orchestrates; M0 serves the model and generates responses.
+| Item | Summary |
+| --- | --- |
+| Problem | Turn PDFs into retrievable context for local question answering. |
+| Purpose | Keep retrieval, ranking, and generation boundaries explicit. |
+| Architecture | Knowledge Vault handles ingestion, retrieval, reranking, and prompt construction; Inference Lab (M0) handles model serving and generation. |
+| M1 focus | Measure and understand the retrieval layer. |
+| Retrieval approach | Dense retrieval, optional cross-encoder reranking, then fixed-size prompt context. |
 
 ## Core Stack
 
-**Python** • **FastAPI** • **Qdrant** • **PyMuPDF** • **Sentence Transformers** • **Docker**
+Python, FastAPI, Qdrant, PyMuPDF, Sentence Transformers, Docker.
 
 ## Design Principles
 
-- Local-first by default
+- Local-first
 - Modular architecture
 - API-first design
 - Reusable AI infrastructure
@@ -42,37 +48,88 @@ Inference Lab (M0) provides the model-serving layer over REST. Knowledge Vault p
 
 ```mermaid
 flowchart TD
-    A["PDF"] --> B["Extraction"]
-    B --> C["Chunking"]
-    C --> D["Embeddings"]
-    D --> E["Qdrant"]
-    E --> F["Retriever"]
-    F --> G["Prompt Builder"]
-    G --> H["REST Inference API"]
-    H --> I["Inference Lab (M0)"]
-    I --> J["LLM Response"]
+    A["PDF upload"] --> B["PyMuPDF text extraction"]
+    B --> C["Recursive token-aware chunking"]
+    C --> D["Embedding generation"]
+    D --> E["Qdrant indexing"]
+    Q["Question"] --> R["Query embedding"]
+    R --> S["Qdrant candidate retrieval"]
+    S --> T["Similarity / metadata filtering"]
+    T --> U["Optional BGE cross-encoder reranking"]
+    U --> V["Final top-k context"]
+    V --> W["Prompt construction"]
+    W --> X["Inference Lab (M0)"]
+    X --> Y["Answer"]
 ```
+
+## Retrieval Pipeline
+
+```text
+Question
+  -> Query embedding
+  -> Qdrant candidate retrieval
+  -> similarity / metadata filtering
+  -> optional BGE cross-encoder reranking
+  -> final top-k context
+  -> prompt construction
+  -> Inference Lab (M0)
+```
+
+- `candidate_k` is the number of retrieved chunks exposed to the reranker.
+- `top_k` is the number of chunks kept as final LLM context.
+- Increasing `candidate_k` can recover missed evidence, but it also increases distractor space for the reranker.
 
 ## End-to-End Pipeline
 
-```text
-Upload PDF
-  -> compute SHA256 document_fingerprint
-  -> detect duplicates
-  -> extract text with PyMuPDF
-  -> recursively chunk text
-  -> generate embeddings
-  -> store chunks in Qdrant
-  -> return document metadata
+### Ingestion
 
-Question Answering
-  -> embed the user question
-  -> retrieve top-k chunks from Qdrant
-  -> apply similarity threshold and metadata filters
-  -> build a prompt with source attribution
-  -> call POST http://localhost:4000/v1/generate
-  -> return answer + sources + latency metrics
+```text
+PDF
+  -> compute SHA256 document fingerprint
+  -> detect duplicates
+  -> extract page text with PyMuPDF
+  -> recursively chunk text by tokens
+  -> generate embeddings
+  -> index chunks in Qdrant
 ```
+
+### Question Answering
+
+```text
+Question
+  -> embed the query
+  -> retrieve candidate chunks from Qdrant
+  -> apply similarity and metadata filters
+  -> optionally rerank with a BGE cross-encoder
+  -> keep final top-k context
+  -> build a source-attributed prompt
+  -> call Inference Lab (M0)
+```
+
+## M1 Evaluation
+
+M1 evaluation used one 214-page document and 35 controlled questions spanning factual, conceptual, paraphrased, section-specific, multi-part, chunk-boundary-sensitive, and deliberately unanswerable prompts.
+
+| Run | Retrieval | Reranking | Candidate Pool | Purpose |
+| --- | --- | --- | --- | --- |
+| Run 1 | Dense | Off | -- | Baseline |
+| Run 2 | Dense | On | Baseline | Test reranking |
+| Run 3 | Dense | On | 20 | Test larger candidate pool |
+
+The final context size remained fixed at `top_k=5`. Stage-level latency instrumentation recorded embedding, retrieval, rerank, LLM, and total timing.
+
+Passage-level machine-checked gold evidence was not established for every question, so this evaluation does not prove retrieval accuracy with Recall@k, MRR, or NDCG.
+
+## M1 Findings
+
+- Reranking changed Top-1 on 27/35 queries (77.1%), but this measures ranking changes, not improvement.
+- Reranking added approximately 2.9 seconds of mean overhead.
+- Qdrant retrieval remained approximately 8-9 ms p50.
+- Increasing `rerank_candidate_k` to 20 changed only 6/35 Top-1 results and did not consistently improve retrieval.
+- Contents and Index pages sometimes ranked highly despite being weak evidence.
+- At least one generated answer was plausible but factually inconsistent with the source.
+
+M1 did not establish that reranking universally improves retrieval quality. It established measurable trade-offs and concrete failure modes.
 
 ## Setup
 
@@ -111,6 +168,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 
 Key environment variables:
 
+- `APP_ENV`: application environment label
+- `DEBUG`: enable debug mode
+- `DATA_DIR`: on-disk storage root
 - `QDRANT_URL`: Qdrant base URL
 - `QDRANT_COLLECTION`: collection name for indexed chunks
 - `GENERATION_PROVIDER_URL`: M0 generation endpoint
@@ -119,16 +179,20 @@ Key environment variables:
 - `EMBEDDING_MODEL_NAME`: embedding model name
 - `EMBEDDING_DEVICE`: `cpu` or `cuda`
 - `EMBEDDING_DIMENSION`: embedding vector size
+- `EMBEDDING_VERSION`: stored embedding version tag
 - `CHUNK_MAX_TOKENS`: recursive chunk size
 - `CHUNK_OVERLAP_TOKENS`: chunk overlap
-- `RETRIEVAL_TOP_K_DEFAULT`: fallback top-k for retrieval
+- `RETRIEVAL_TOP_K_DEFAULT`: fallback retrieval `top_k`
 - `RETRIEVAL_SIMILARITY_THRESHOLD`: minimum normalized similarity score
-- `DUPLICATE_UPLOAD_POLICY`: `reject`, `replace`, or `allow`
+- `RE_RANK_ENABLED`: enable or disable reranking
+- `RE_RANK_MODEL_NAME`: cross-encoder model name
+- `RERANK_CANDIDATE_K`: rerank candidate pool size
 - `PROMPT_TOKEN_BUDGET`: prompt budget for the prompt builder
+- `DUPLICATE_UPLOAD_POLICY`: `reject`, `replace`, or `allow`
 
 ## REST API
 
-Interactive API Documentation (Swagger UI)
+Interactive API documentation:
 
 - `http://localhost:8000/docs`
 
@@ -186,14 +250,14 @@ Response:
 
 ```json
 {
-  "answer": "…",
+  "answer": "...",
   "sources": [
     {
-      "doc_id": "…",
+      "doc_id": "...",
       "filename": "document.pdf",
-      "chunk_id": "…",
+      "chunk_id": "...",
       "chunk_index": 1,
-      "text": "…",
+      "text": "...",
       "score": 0.73,
       "page_number": 2,
       "section_title": "2. Calculator API"
@@ -202,31 +266,26 @@ Response:
   "latency_ms": {
     "embedding": 12,
     "retrieval": 8,
+    "rerank": 4,
     "llm": 5883,
-    "total": 5903
+    "total": 5907
   }
 }
 ```
 
 ## Offline Evaluation
 
-Run the evaluation suite and emit a JSON report:
-
 ```bash
 uv run pdf-rag-eval --questions eval/questions.json --output eval-report.json
 ```
 
-Metrics include:
+The current evaluation script reports heuristic retrieval_precision, recall_at_k, generation_latency_ms, latency_ms, answer_faithfulness, and context_utilisation over the provided question set.
 
-- Retrieval Precision
-- Recall@k
-- Latency
-- Answer Faithfulness
-- Context Utilisation
+- Retrieval precision and recall are based on `expected_doc_id` and `expected_chunk_keywords`, not machine-checked passage-level ground truth.
+- Answer faithfulness and context utilisation are token-overlap heuristics between the answer and retrieved context.
+- Passage-level gold evidence, Recall@k, MRR, and NDCG are next evaluation refinements if you need stricter retrieval-grounding measurement.
 
 ## Performance Benchmarking
-
-Run the benchmark suite and emit a JSON report:
 
 ```bash
 uv run pdf-rag-benchmark --output benchmark-report.json
@@ -241,30 +300,41 @@ The benchmark reports:
 - generation latency
 - total end-to-end latency
 
+Rerank latency is available in chat and evaluation telemetry when reranking is enabled, but the standalone benchmark command does not isolate it as a separate stage.
+
 This is a local-stage benchmark; its file-write measurement is not an HTTP `POST /v1/upload` latency measurement.
 
 ## Related Projects
 
-- [Inference Lab (M0)](https://github.com/Jaival-Suthar/inference-lab): provides model serving, inference, benchmarking, and telemetry. Knowledge Vault calls it over REST for generation, rather than embedding a model runtime here.
-- Future milestones of the Local AI stack—including long-term memory, knowledge graphs, evaluation, planning, and autonomous agents—will build on this retrieval layer while continuing to consume Inference Lab (M0) as the inference backend.
+- [Inference Lab (M0)](https://github.com/Jaival-Suthar/inference-lab): provides model serving and generation over REST. Knowledge Vault calls it rather than hosting a local model runtime.
+
+Knowledge Vault is designed as an independently versioned retrieval subsystem within a modular local AI stack.
 
 ## Known Limitations
 
 - Generation depends on the external M0 service being available at `GENERATION_PROVIDER_URL`.
 - Qdrant must be running before upload or chat requests can succeed.
 - The repository does not ship a standalone model runtime.
-- Concurrent uploads of the same document fingerprint can race in this milestone because the duplicate check and ingestion write are not atomic.
+- OCR and scanned PDFs are out of scope for M1.
+- Concurrent uploads of the same document fingerprint can race because the duplicate check and ingestion write are not atomic.
+- Passage-level machine-checked ground truth is still missing for the evaluation set.
+- Reranking adds measurable latency, so the retrieval path has a speed-versus-rank-quality trade-off.
 
-## Future Work
+## Next Engineering Questions
 
-- Richer evaluation datasets and scoring.
-- Optional re-ranking improvements.
-- Additional ingestion formats beyond PDF.
-- Broader observability and deployment automation.
+- Establish passage-level ground truth for the evaluation set.
+- Compute Recall@k, MRR, and NDCG against that ground truth.
+- Compare rerank candidate pools systematically.
+- Test document-structure-aware retrieval against Contents/Index failure cases.
+- Reduce the deployment footprint.
 
 ## Troubleshooting
 
 - If `POST /v1/chat` returns `502`, confirm Inference Lab is running and `http://localhost:4000/v1/generate` responds successfully.
-- If uploads fail with `409`, the document fingerprint already exists and `DUPLICATE_UPLOAD_POLICY=reject`.
+- If uploads return `409`, the document fingerprint already exists and `DUPLICATE_UPLOAD_POLICY=reject`.
 - If Qdrant is unreachable, confirm the container is running and port `6333` is free.
 - If embeddings are slow, try `EMBEDDING_DEVICE=cuda` during bulk ingestion.
+
+## License
+
+MIT

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdf-rag-system"
-version = "1.0.0"
+version = "1.1.0"
 description = "Knowledge Vault: Local-first PDF RAG engine for modular AI systems."
 readme = "README.md"
 requires-python = ">=3.11"
