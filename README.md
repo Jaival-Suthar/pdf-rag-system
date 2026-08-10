@@ -110,15 +110,15 @@ Question
 
 M1 evaluation used one 214-page document and 35 controlled questions spanning factual, conceptual, paraphrased, section-specific, multi-part, chunk-boundary-sensitive, and deliberately unanswerable prompts.
 
-| Run | Retrieval | Reranking | Candidate Pool | Purpose |
+| Run | Retrieval | Reranking | Candidate K | Purpose |
 | --- | --- | --- | --- | --- |
 | Run 1 | Dense | Off | -- | Baseline |
-| Run 2 | Dense | On | Baseline | Test reranking |
+| Run 2 | Dense | On | 5 | Test reranking |
 | Run 3 | Dense | On | 20 | Test larger candidate pool |
 
 The final context size remained fixed at `top_k=5`. Stage-level latency instrumentation recorded embedding, retrieval, rerank, LLM, and total timing.
 
-Passage-level machine-checked gold evidence was not established for every question, so this evaluation does not prove retrieval accuracy with Recall@k, MRR, or NDCG.
+The evaluation includes heuristic retrieval precision and retrieval-hit metrics based on expected document IDs and chunk keywords. Passage-level machine-checked gold evidence was not established for every question, so these metrics do not constitute strict passage-level Recall@k, MRR, or NDCG measurements.
 
 ## M1 Findings
 
@@ -279,11 +279,11 @@ Response:
 uv run pdf-rag-eval --questions eval/questions.json --output eval-report.json
 ```
 
-The current evaluation script reports heuristic retrieval_precision, recall_at_k, generation_latency_ms, latency_ms, answer_faithfulness, and context_utilisation over the provided question set.
+The current evaluation script reports heuristic retrieval_precision, retrieval_hit_at_k, generation_latency_ms, latency_ms, answer_faithfulness, and context_utilisation over the provided question set.
 
-- Retrieval precision and recall are based on `expected_doc_id` and `expected_chunk_keywords`, not machine-checked passage-level ground truth.
+- Retrieval precision and retrieval-hit metrics are based on `expected_doc_id` and `expected_chunk_keywords`, not machine-checked passage-level gold evidence.
 - Answer faithfulness and context utilisation are token-overlap heuristics between the answer and retrieved context.
-- Passage-level gold evidence, Recall@k, MRR, and NDCG are next evaluation refinements if you need stricter retrieval-grounding measurement.
+- Strict passage-level Recall@k, MRR, and NDCG against machine-checked gold evidence are not implemented yet.
 
 ## Performance Benchmarking
 
@@ -317,13 +317,13 @@ Knowledge Vault is designed as an independently versioned retrieval subsystem wi
 - The repository does not ship a standalone model runtime.
 - OCR and scanned PDFs are out of scope for M1.
 - Concurrent uploads of the same document fingerprint can race because the duplicate check and ingestion write are not atomic.
-- Passage-level machine-checked ground truth is still missing for the evaluation set.
+- Passage-level machine-checked gold evidence is still missing for the evaluation set.
 - Reranking adds measurable latency, so the retrieval path has a speed-versus-rank-quality trade-off.
 
 ## Next Engineering Questions
 
-- Establish passage-level ground truth for the evaluation set.
-- Compute Recall@k, MRR, and NDCG against that ground truth.
+- Establish passage-level gold evidence for the evaluation set.
+- Evaluate retrieval ranking against that evidence using stricter retrieval metrics.
 - Compare rerank candidate pools systematically.
 - Test document-structure-aware retrieval against Contents/Index failure cases.
 - Reduce the deployment footprint.

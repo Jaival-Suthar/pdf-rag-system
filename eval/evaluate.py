@@ -26,7 +26,7 @@ class QuestionSpec:
 class QuestionResult:
     question: str
     precision: float
-    recall_at_k: float
+    retrieval_hit_at_k: float
     generation_latency_ms: int
     latency_ms: int
     faithfulness: float
@@ -78,8 +78,8 @@ def _score_retrieval(question: QuestionSpec, chunks: Sequence[object]) -> tuple[
             continue
         relevant_count += 1
     precision = relevant_count / max(len(chunks), 1)
-    recall_at_k = 1.0 if relevant_count > 0 else 0.0
-    return precision, recall_at_k
+    retrieval_hit_at_k = 1.0 if relevant_count > 0 else 0.0
+    return precision, retrieval_hit_at_k
 
 
 def _score_answer(answer: str, context_text: str) -> tuple[float, float]:
@@ -113,7 +113,7 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
         generation_start = perf_counter()
         answer = services.generation_client.generate(prompt_bundle.prompt).text
         generation_latency_ms = int((perf_counter() - generation_start) * 1000)
-        precision, recall_at_k = _score_retrieval(item, retrieval.chunks)
+        precision, retrieval_hit_at_k = _score_retrieval(item, retrieval.chunks)
         context_text = "\n".join(chunk.text for chunk in retrieval.chunks)
         faithfulness, context_utilisation = _score_answer(answer, context_text)
         total_latency_ms = (
@@ -123,7 +123,7 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
             QuestionResult(
                 question=item.question,
                 precision=precision,
-                recall_at_k=recall_at_k,
+                retrieval_hit_at_k=retrieval_hit_at_k,
                 generation_latency_ms=generation_latency_ms,
                 latency_ms=total_latency_ms,
                 faithfulness=faithfulness,
@@ -135,7 +135,7 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
     summary = {
         "questions": len(results),
         "retrieval_precision": mean(result.precision for result in results) if results else 0.0,
-        "recall_at_k": mean(result.recall_at_k for result in results) if results else 0.0,
+        "retrieval_hit_at_k": mean(result.retrieval_hit_at_k for result in results) if results else 0.0,
         "generation_latency_ms": mean(result.generation_latency_ms for result in results)
         if results
         else 0.0,
