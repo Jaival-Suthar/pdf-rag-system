@@ -135,7 +135,9 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
     summary = {
         "questions": len(results),
         "retrieval_precision": mean(result.precision for result in results) if results else 0.0,
-        "retrieval_hit_at_k": mean(result.retrieval_hit_at_k for result in results) if results else 0.0,
+        "retrieval_hit_at_k": mean(result.retrieval_hit_at_k for result in results)
+        if results
+        else 0.0,
         "generation_latency_ms": mean(result.generation_latency_ms for result in results)
         if results
         else 0.0,
