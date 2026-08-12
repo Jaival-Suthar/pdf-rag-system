@@ -87,7 +87,7 @@ def classify_structure(chunk: Mapping[str, object]) -> str:
         or text.startswith("contents")
     ):
         return "CONTENTS"
-    if section_title == "index" or text.startswith("index ") or " index " in haystack:
+    if section_title == "index" or re.search(r"\bindex\b", haystack) is not None:
         return "INDEX"
     if (
         "introduction" in haystack

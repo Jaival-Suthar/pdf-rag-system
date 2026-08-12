@@ -24,11 +24,11 @@ def test_classify_structure_and_rank_displacement() -> None:
     assert (
         classify_structure(
             {
-                "section_title": "Contents",
-                "text": "Table of Contents",
+                "section_title": "Index",
+                "text": "Index",
             }
         )
-        == "CONTENTS"
+        == "INDEX"
     )
     assert (
         classify_structure(
@@ -110,6 +110,9 @@ def test_run_evaluation_persists_reranker_scores(
             return RetrievalResult(
                 chunks=[chunk_two],
                 candidate_chunks=[chunk_one, chunk_two],
+                filtered_candidate_chunks=[chunk_one, chunk_two],
+                original_candidate_count=2,
+                filtered_candidate_count=2,
                 candidate_reranker_scores=[0.2, 0.9],
                 embedding_latency_ms=1,
                 retrieval_latency_ms=2,
@@ -122,6 +125,7 @@ def test_run_evaluation_persists_reranker_scores(
                     similarity_threshold=0.0,
                     reranker_enabled=True,
                     reranker_model_name="BAAI/bge-reranker-base",
+                    structural_filter_enabled=False,
                 ),
             )
 

@@ -13,6 +13,9 @@ M1 covers:
 - recursive token-aware chunking
 - embedding generation
 - Qdrant vector indexing and retrieval
+- passage-level gold-evidence evaluation
+- reranker failure analysis
+- document-structure-aware retrieval experiments
 - similarity and metadata filtering
 - optional BGE cross-encoder reranking
 - source-attributed prompt construction
@@ -20,7 +23,7 @@ M1 covers:
 - offline evaluation
 - stage-level latency benchmarking
 
-M1 does not attempt to solve OCR or scanned PDFs, multi-source ingestion, large-scale distributed retrieval, or production-scale evaluation infrastructure.
+M1 does not attempt to solve OCR or scanned PDFs, multi-source ingestion, large-scale distributed retrieval, or production-scale evaluation infrastructure. Complex extraction cases such as tables and multi-column layouts have not yet been systematically evaluated.
 
 ## At A Glance
 
@@ -53,8 +56,8 @@ flowchart TD
     C --> D["Embedding generation"]
     D --> E["Qdrant indexing"]
     Q["Question"] --> R["Query embedding"]
-    R --> S["Qdrant candidate retrieval"]
-    S --> T["Similarity / metadata filtering"]
+    R --> S["Exact candidate-k dense retrieval"]
+    S --> T["Optional structural eligibility filtering"]
     T --> U["Optional BGE cross-encoder reranking"]
     U --> V["Final top-k context"]
     V --> W["Prompt construction"]
@@ -67,17 +70,20 @@ flowchart TD
 ```text
 Question
   -> Query embedding
-  -> Qdrant candidate retrieval
-  -> similarity / metadata filtering
+  -> exact candidate-k dense retrieval
+  -> structural eligibility filtering
   -> optional BGE cross-encoder reranking
   -> final top-k context
   -> prompt construction
   -> Inference Lab (M0)
 ```
 
-- `candidate_k` is the number of retrieved chunks exposed to the reranker.
+- `candidate_k` is the number of dense candidates exposed to the reranker.
 - `top_k` is the number of chunks kept as final LLM context.
-- Increasing `candidate_k` can recover missed evidence, but it also increases distractor space for the reranker.
+- Increasing `candidate_k` can improve candidate recall, but it also increases the distractor space presented to the reranker.
+- In the M1 benchmark, candidate Recall@20 reached 83.3%, while final Recall@5 was 66.7% before structural filtering.
+
+Structural filtering is an opt-in stage that occurs after dense retrieval and before reranking. It does not delete structural chunks from the corpus; it only controls whether they are eligible for the evidence-oriented reranking path.
 
 ## End-to-End Pipeline
 
@@ -99,7 +105,7 @@ PDF
 Question
   -> embed the query
   -> retrieve candidate chunks from Qdrant
-  -> apply similarity and metadata filters
+  -> apply structural eligibility filtering
   -> optionally rerank with a BGE cross-encoder
   -> keep final top-k context
   -> build a source-attributed prompt
@@ -149,11 +155,45 @@ The benchmark matrix was designed to separate candidate depth from reranking.
 
 The rerank-k20 run showed that widening the candidate pool can recover more candidate evidence, but the reranker can still move correct chunks out of the final top-5 context.
 
-### `RQ3: When correct evidence exists in candidate-k=20, why can reranking lose it from final top-k=5?`
+### RQ3: When correct evidence exists in candidate-k=20, why can reranking lose it from final top-k=5?
 
-Current working hypothesis: the reranker may overvalue semantic or query similarity and promote structurally irrelevant passages such as Contents, Index, introductory, or metadata-heavy chunks over substantive evidence.
+The rerank-k20 benchmark showed that widening the candidate pool increased candidate recall but did not improve final evidence ranking. For this corpus, candidate Recall@20 reached 83.3%, while final Recall@5 was 66.7%.
 
-This is a hypothesis only. It is not yet a conclusion, and the repository does not apply any structural filtering or ranking intervention.
+Failure analysis identified structurally non-substantive chunks such as CONTENTS, INDEX, COPYRIGHT, and GLOSSARY as high-similarity distractors in several cases.
+
+Hypothesis:
+
+"Structural candidates can interfere with reranking when they are treated as ordinary substantive evidence."
+
+A structural eligibility filter was implemented after dense retrieval and before reranking. It excludes CONTENTS, INDEX, COPYRIGHT, and GLOSSARY candidates while leaving dense retrieval scores and reranker scoring unchanged.
+
+The controlled before/after experiment produced:
+
+| Metric | Baseline | Structural filter |
+| --- | ---: | ---: |
+| Candidate Recall@20 | 83.3% | 83.3% |
+| Recall@1 | 20.0% | 20.0% |
+| Recall@5 | 66.7% | 70.0% |
+| MRR | 0.3911 | 0.4022 |
+| nDCG@5 | 0.3561 | 0.3722 |
+
+The experiment artifacts are:
+
+- `eval/results/m1-rq3-baseline-k20-v1.json`
+- `eval/results/m1-rq3-structural-filter-k20-v1.json`
+- `eval/results/rq3-score-margin-analysis-v1.json`
+
+The result supports the hypothesis as a contributing factor, but not as a complete explanation of reranking failures. Structural filtering improved Recall@5, MRR, and nDCG@5 while leaving Recall@1 and candidate Recall@20 unchanged.
+
+## M1 Research Conclusion
+
+M1 showed that increasing the reranking candidate pool does not guarantee better final evidence retrieval. In the evaluated corpus, dense candidate Recall@20 reached 83.3%, while final Recall@5 was 66.7%.
+
+Failure analysis identified structurally non-substantive chunks as recurring high-similarity distractors. Filtering CONTENTS, INDEX, COPYRIGHT, and GLOSSARY candidates before reranking improved Recall@5 from 66.7% to 70.0%, MRR from 0.3911 to 0.4022, and nDCG@5 from 0.3561 to 0.3722.
+
+The intervention did not improve Recall@1 or candidate Recall@20, so structural filtering is treated as a contributing factor rather than a complete solution to reranking failures.
+
+M1 therefore closes with a better understanding of retrieval failure modes rather than a claim of production-grade retrieval quality.
 
 ## Setup
 
@@ -211,6 +251,7 @@ Key environment variables:
 - `RE_RANK_ENABLED`: enable or disable reranking
 - `RE_RANK_MODEL_NAME`: cross-encoder model name
 - `RERANK_CANDIDATE_K`: rerank candidate pool size
+- `RETRIEVAL_STRUCTURAL_FILTER_ENABLED`: opt-in structural eligibility filter before reranking
 - `PROMPT_TOKEN_BUDGET`: prompt budget for the prompt builder
 - `DUPLICATE_UPLOAD_POLICY`: `reject`, `replace`, or `allow`
 
@@ -303,11 +344,33 @@ Response:
 uv run pdf-rag-eval --questions eval/questions.json --output eval-report.json
 ```
 
-The current evaluation script reports heuristic retrieval_precision, retrieval_hit_at_k, generation_latency_ms, latency_ms, answer_faithfulness, and context_utilisation over the provided question set.
+The evaluation pipeline now reports both heuristic answer-level metrics and strict passage-level retrieval metrics.
+
+It includes:
+
+- Recall@1
+- Recall@5
+- Recall@20
+- MRR
+- nDCG@5
+- candidate recall
+- generation latency
+- stage-level latency
+
+The older retrieval precision and retrieval-hit metrics are heuristic and use `expected_doc_id` and `expected_chunk_keywords`. The strict Recall@k, MRR, and nDCG metrics use the machine-checked passage-level gold-evidence annotations.
+
+Evaluation artifacts preserve per-question candidate chunks, retrieved chunks, dense scores, reranker scores, candidate ranks, final ranks, and structural categories for analysis.
 
 - Retrieval precision and retrieval-hit metrics are based on `expected_doc_id` and `expected_chunk_keywords`, not machine-checked passage-level gold evidence.
-- Answer faithfulness and context utilisation are token-overlap heuristics between the answer and retrieved context.
-- Strict passage-level Recall@k, MRR, and NDCG against machine-checked gold evidence are not implemented yet.
+- Answer faithfulness and context utilisation are token-overlap heuristics between the answer and retrieved context and should not be treated as semantic evaluation.
+
+For the controlled structural-filter experiment, use:
+
+```bash
+uv run pdf-rag-eval --questions eval/questions-gold-evidence-v1.json --output eval/results/m1-rq3-structural-filter-k20-v1.json --structural-filter-enabled
+```
+
+The baseline and filtered experiments keep `candidate_k=20` and `top_k=5` constant.
 
 ## Performance Benchmarking
 
@@ -339,18 +402,19 @@ Knowledge Vault is designed as an independently versioned retrieval subsystem wi
 - Generation depends on the external M0 service being available at `GENERATION_PROVIDER_URL`.
 - Qdrant must be running before upload or chat requests can succeed.
 - The repository does not ship a standalone model runtime.
-- OCR and scanned PDFs are out of scope for M1.
+- The current gold-evidence benchmark uses one 214-page text-layer PDF.
+- Tables, multi-column layouts, reading-order corruption, headers/footers, and OCR/scanned PDFs have not yet been systematically evaluated.
+- The question set contains related and near-duplicate questions, so raw question counts should not automatically be interpreted as independent failure counts.
 - Concurrent uploads of the same document fingerprint can race because the duplicate check and ingestion write are not atomic.
-- Passage-level machine-checked gold evidence is still missing for the evaluation set.
 - Reranking adds measurable latency, so the retrieval path has a speed-versus-rank-quality trade-off.
 
 ## Next Engineering Questions
 
-- Establish passage-level gold evidence for the evaluation set.
-- Evaluate retrieval ranking against that evidence using stricter retrieval metrics.
-- Compare rerank candidate pools systematically.
-- Test document-structure-aware retrieval against Contents/Index failure cases.
-- Reduce the deployment footprint.
+- Investigate the remaining gap between candidate Recall@20 and final Recall@5.
+- Evaluate hybrid dense + BM25 retrieval and reciprocal rank fusion in M2.
+- Determine whether structural metadata should influence retrieval, fusion, or reranking.
+- Expand extraction evaluation to tables, multi-column layouts, headers/footers, and reading-order failures.
+- Continue improving deployment efficiency and footprint.
 
 ## Troubleshooting
 

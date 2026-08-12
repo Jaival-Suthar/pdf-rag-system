@@ -1,12 +1,51 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from statistics import mean, median
-
+from typing import TypedDict, cast
 
 INPUT = Path("eval/results/m1-rerank-k20-v3.json")
 OUTPUT = Path("eval/results/rq3-score-margin-analysis-v1.json")
+
+
+class BenchmarkChunk(TypedDict, total=False):
+    chunk_id: str
+    candidate_rank: int | None
+    final_rank: int
+    raw_score: float | None
+    reranker_score: float | None
+    section_title: str | None
+    page_number: int | None
+    text: str | None
+    category: str
+    score_margin: float | None
+    dense_score: float | None
+    dense_rank_delta_vs_gold: int | None
+
+
+class BenchmarkEvidence(TypedDict, total=False):
+    chunk_id: str
+
+
+class BenchmarkResult(TypedDict, total=False):
+    question_id: str
+    candidate_chunks: list[BenchmarkChunk]
+    retrieved_chunks: list[BenchmarkChunk]
+    gold_evidence: list[BenchmarkEvidence]
+
+
+class AnalysisFailureCase(TypedDict):
+    question_id: str
+    gold_chunk_id: str
+    gold_candidate_rank: int | None
+    gold_dense_score: float | None
+    gold_reranker_score: float | None
+    gold_section_title: object
+    gold_page_number: object
+    best_replacement: BenchmarkChunk
+    all_final_replacements: list[BenchmarkChunk]
 
 
 def as_float(value: object) -> float | None:
@@ -29,16 +68,23 @@ def as_int(value: object) -> int | None:
     return None
 
 
-def load_json(path: Path) -> dict:
+def as_str_or_none(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def load_json(path: Path) -> dict[str, object]:
     with path.open("r", encoding="utf-8") as file:
         data = json.load(file)
 
     if not isinstance(data, dict):
         raise ValueError(f"{path} must contain a JSON object")
 
-    return data
+    return cast(dict[str, object], data)
 
-def classify_structural_chunk(chunk: dict) -> str:
+
+def classify_structural_chunk(chunk: Mapping[str, object]) -> str:
     text = str(chunk.get("text", "")).strip().lower()
     section_title = str(chunk.get("section_title", "")).strip().lower()
 
@@ -51,11 +97,7 @@ def classify_structural_chunk(chunk: dict) -> str:
     ):
         return "CONTENTS"
 
-    if (
-        section_title == "index"
-        or text.startswith("index")
-        or "subject index" in haystack
-    ):
+    if section_title == "index" or text.startswith("index") or "subject index" in haystack:
         return "INDEX"
 
     if "introduction" in section_title or text.startswith("introduction"):
@@ -88,56 +130,60 @@ def classify_structural_chunk(chunk: dict) -> str:
 
     return "SUBSTANTIVE"
 
+
 def main() -> None:
     report = load_json(INPUT)
 
-    results = report.get("results")
-    if not isinstance(results, list):
+    results_raw = report.get("results")
+    if not isinstance(results_raw, list):
         raise ValueError("Expected benchmark JSON to contain a 'results' list")
+    results = cast(list[object], results_raw)
 
-    failures: list[dict[str, object]] = []
+    failures: list[AnalysisFailureCase] = []
 
     for result in results:
-        if not isinstance(result, dict):
+        if not isinstance(result, Mapping):
             continue
+        result_map = cast(Mapping[str, object], result)
 
-        question_id = str(result.get("question_id", ""))
+        question_id = str(result_map.get("question_id", ""))
 
-        candidate_chunks = result.get("candidate_chunks", [])
-        final_chunks = result.get("retrieved_chunks", [])
-
-        if not isinstance(candidate_chunks, list):
+        candidate_chunks_raw = result_map.get("candidate_chunks", [])
+        final_chunks_raw = result_map.get("retrieved_chunks", [])
+        if not isinstance(candidate_chunks_raw, list):
             continue
-
-        if not isinstance(final_chunks, list):
+        if not isinstance(final_chunks_raw, list):
             continue
+        candidate_chunks = cast(list[object], candidate_chunks_raw)
+        final_chunks = cast(list[object], final_chunks_raw)
 
-        candidate_by_id: dict[str, dict] = {}
-        final_by_id: dict[str, dict] = {}
+        candidate_by_id: dict[str, BenchmarkChunk] = {}
+        final_by_id: dict[str, BenchmarkChunk] = {}
 
         for chunk in candidate_chunks:
-            if isinstance(chunk, dict):
+            if isinstance(chunk, Mapping):
                 chunk_id = chunk.get("chunk_id")
                 if isinstance(chunk_id, str):
-                    candidate_by_id[chunk_id] = chunk
+                    candidate_by_id[chunk_id] = cast(BenchmarkChunk, chunk)
 
-        for rank, chunk in enumerate(final_chunks, start=1):
-            if isinstance(chunk, dict):
+        for _rank, chunk in enumerate(final_chunks, start=1):
+            if isinstance(chunk, Mapping):
                 chunk_id = chunk.get("chunk_id")
                 if isinstance(chunk_id, str):
-                    final_by_id[chunk_id] = chunk
+                    final_by_id[chunk_id] = cast(BenchmarkChunk, chunk)
 
-        gold_evidence = result.get("gold_evidence", [])
-
-        if not isinstance(gold_evidence, list):
+        gold_evidence_raw = result_map.get("gold_evidence", [])
+        if not isinstance(gold_evidence_raw, list):
             continue
+        gold_evidence = cast(list[object], gold_evidence_raw)
 
-        gold_ids = {
-            evidence.get("chunk_id")
-            for evidence in gold_evidence
-            if isinstance(evidence, dict)
-            and isinstance(evidence.get("chunk_id"), str)
-        }
+        gold_ids: set[str] = set()
+        for evidence in gold_evidence:
+            if not isinstance(evidence, Mapping):
+                continue
+            chunk_id = evidence.get("chunk_id")
+            if isinstance(chunk_id, str):
+                gold_ids.add(chunk_id)
 
         for gold_id in gold_ids:
             gold = candidate_by_id.get(gold_id)
@@ -155,10 +201,10 @@ def main() -> None:
             gold_reranker_score = as_float(gold.get("reranker_score"))
 
             # Find the final chunks that displaced the gold chunk.
-            replacements: list[dict[str, object]] = []
+            replacements: list[BenchmarkChunk] = []
 
             for final_rank, replacement in enumerate(final_chunks, start=1):
-                if not isinstance(replacement, dict):
+                if not isinstance(replacement, Mapping):
                     continue
 
                 replacement_id = replacement.get("chunk_id")
@@ -174,44 +220,26 @@ def main() -> None:
                 if replacement_candidate is None:
                     continue
 
-                replacement_reranker_score = as_float(
-                    replacement.get("reranker_score")
-                )
+                replacement_reranker_score = as_float(replacement.get("reranker_score"))
 
                 if replacement_reranker_score is None:
                     replacement_reranker_score = as_float(
                         replacement_candidate.get("reranker_score")
                     )
 
-                replacement_dense_score = as_float(
-                    replacement_candidate.get("raw_score")
-                )
+                replacement_dense_score = as_float(replacement_candidate.get("raw_score"))
 
-                replacement_candidate_rank = as_int(
-                    replacement_candidate.get("candidate_rank")
-                )
+                replacement_candidate_rank = as_int(replacement_candidate.get("candidate_rank"))
 
                 score_margin = None
-                if (
-                    gold_reranker_score is not None
-                    and replacement_reranker_score is not None
-                ):
-                    score_margin = (
-                        replacement_reranker_score - gold_reranker_score
-                    )
+                if gold_reranker_score is not None and replacement_reranker_score is not None:
+                    score_margin = replacement_reranker_score - gold_reranker_score
 
                 dense_rank_delta = None
-                if (
-                    gold_candidate_rank is not None
-                    and replacement_candidate_rank is not None
-                ):
-                    dense_rank_delta = (
-                        replacement_candidate_rank - gold_candidate_rank
-                    )
+                if gold_candidate_rank is not None and replacement_candidate_rank is not None:
+                    dense_rank_delta = replacement_candidate_rank - gold_candidate_rank
 
-                replacement_category = classify_structural_chunk(
-                    replacement_candidate
-                )
+                replacement_category = classify_structural_chunk(replacement_candidate)
 
                 replacements.append(
                     {
@@ -222,24 +250,14 @@ def main() -> None:
                         "reranker_score": replacement_reranker_score,
                         "score_margin": score_margin,
                         "category": replacement_category,
-                        "section_title": replacement_candidate.get(
-                            "section_title"
-                        ),
-                        "page_number": replacement_candidate.get(
-                            "page_number"
-                        ),
-                        "text": replacement_candidate.get("text"),
+                        "section_title": as_str_or_none(replacement_candidate.get("section_title")),
+                        "page_number": as_int(replacement_candidate.get("page_number")),
+                        "text": as_str_or_none(replacement_candidate.get("text")),
                         "dense_rank_delta_vs_gold": dense_rank_delta,
                     }
                 )
 
-            replacements.sort(
-                key=lambda item: (
-                    item["final_rank"]
-                    if isinstance(item.get("final_rank"), int)
-                    else 999999
-                )
-            )
+            replacements.sort(key=lambda item: item["final_rank"])
 
             if not replacements:
                 continue
@@ -260,25 +278,29 @@ def main() -> None:
                 }
             )
 
-    margins = [
-        item["best_replacement"]["score_margin"]
-        for item in failures
-        if isinstance(item.get("best_replacement"), dict)
-        and isinstance(item["best_replacement"].get("score_margin"), (int, float))
-    ]
+    margins: list[float] = []
+    for item in failures:
+        replacement = item.get("best_replacement")
+        if not isinstance(replacement, Mapping):
+            continue
+        score_margin = replacement.get("score_margin")
+        if isinstance(score_margin, (int, float)):
+            margins.append(float(score_margin))
 
-    gold_scores = [
-        item["gold_reranker_score"]
-        for item in failures
-        if isinstance(item.get("gold_reranker_score"), (int, float))
-    ]
+    gold_scores: list[float] = []
+    for item in failures:
+        gold_reranker_score = item.get("gold_reranker_score")
+        if isinstance(gold_reranker_score, (int, float)):
+            gold_scores.append(float(gold_reranker_score))
 
-    replacement_scores = [
-        item["best_replacement"]["reranker_score"]
-        for item in failures
-        if isinstance(item.get("best_replacement"), dict)
-        and isinstance(item["best_replacement"].get("reranker_score"), (int, float))
-    ]
+    replacement_scores: list[float] = []
+    for item in failures:
+        replacement = item.get("best_replacement")
+        if not isinstance(replacement, Mapping):
+            continue
+        reranker_score = replacement.get("reranker_score")
+        if isinstance(reranker_score, (int, float)):
+            replacement_scores.append(float(reranker_score))
 
     structural_categories = {
         "CONTENTS",
@@ -295,7 +317,7 @@ def main() -> None:
     for item in failures:
         replacement = item.get("best_replacement")
 
-        if not isinstance(replacement, dict):
+        if not isinstance(replacement, Mapping):
             continue
 
         category = str(replacement.get("category", ""))
@@ -324,9 +346,7 @@ def main() -> None:
             "median": median(replacement_scores) if replacement_scores else None,
         },
         "structural_best_replacements": structural_replacements,
-        "substantive_or_other_best_replacements": (
-            len(failures) - structural_replacements
-        ),
+        "substantive_or_other_best_replacements": (len(failures) - structural_replacements),
         "failure_cases": failures,
     }
 
@@ -345,10 +365,7 @@ def main() -> None:
         print(f"Mean gold reranker score: {mean(gold_scores):.4f}")
 
     if replacement_scores:
-        print(
-            "Mean replacement reranker score: "
-            f"{mean(replacement_scores):.4f}"
-        )
+        print(f"Mean replacement reranker score: {mean(replacement_scores):.4f}")
 
 
 if __name__ == "__main__":

@@ -246,13 +246,12 @@ class VectorStore:
     ) -> list[RetrievedChunk]:
         self.ensure_collection()
         query_filter = _build_filter(filters)
-        candidate_limit = max(top_k * 3, top_k)
         client = cast(Any, self._client)
         if hasattr(client, "query_points"):
             search_result = client.query_points(
                 collection_name=self._settings.qdrant_collection,
                 query=vector,
-                limit=candidate_limit,
+                limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
                 with_vectors=False,
@@ -262,7 +261,7 @@ class VectorStore:
             results = client.search(
                 collection_name=self._settings.qdrant_collection,
                 query_vector=vector,
-                limit=candidate_limit,
+                limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
                 with_vectors=False,

@@ -11,6 +11,7 @@ from statistics import mean
 from time import perf_counter
 
 from app.config import get_settings
+from app.core.structural import classify_structure
 from app.core.vectorstore import RetrievalFilters, RetrievedChunk
 from app.services import Services
 
@@ -56,6 +57,10 @@ class QuestionResult:
     ndcg_at_10: float | None
     candidate_chunks: list[dict[str, object]]
     retrieved_chunks: list[dict[str, object]]
+    original_candidate_count: int
+    filtered_candidate_count: int
+    candidate_structure_categories: list[str]
+    filtered_candidate_structure_categories: list[str]
     precision: float
     retrieval_hit_at_k: float
     generation_latency_ms: int
@@ -318,6 +323,7 @@ def _serialize_chunk(
     if rank is not None:
         payload[rank_label] = rank
     payload["reranker_score"] = reranker_score
+    payload["structure_category"] = classify_structure(payload)
     return payload
 
 
@@ -326,10 +332,20 @@ def _mean_or_none(values: Sequence[float | None]) -> float | None:
     return mean(non_null) if non_null else None
 
 
-def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> dict[str, object]:
+def run_evaluation(
+    questions_path: Path,
+    *,
+    candidate_k: int | None = None,
+    structural_filter_enabled: bool | None = None,
+) -> dict[str, object]:
     settings = get_settings()
     services = Services.build(settings)
     questions = _load_questions(questions_path)
+    effective_structural_filter_enabled = (
+        settings.retrieval_structural_filter_enabled
+        if structural_filter_enabled is None
+        else structural_filter_enabled
+    )
 
     results: list[QuestionResult] = []
     validation_errors: list[dict[str, object]] = []
@@ -348,9 +364,11 @@ def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> d
             candidate_k=candidate_k,
             similarity_threshold=settings.retrieval_similarity_threshold,
             filters=filters,
+            structural_filter_enabled=effective_structural_filter_enabled,
         )
         prompt_bundle = services.prompt_builder.build(item.question, retrieval.chunks)
         generation_start = perf_counter()
+        print(f"Generating {question_id}: prompt_chars={len(prompt_bundle.prompt)}")
         answer = services.generation_client.generate(prompt_bundle.prompt).text
         generation_latency_ms = int((perf_counter() - generation_start) * 1000)
 
@@ -406,6 +424,12 @@ def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> d
                 )
                 for index, chunk in enumerate(retrieval.chunks)
             ],
+            original_candidate_count=retrieval.original_candidate_count,
+            filtered_candidate_count=retrieval.filtered_candidate_count,
+            candidate_structure_categories=(retrieval.candidate_structure_categories or []),
+            filtered_candidate_structure_categories=(
+                retrieval.filtered_candidate_structure_categories or []
+            ),
             precision=precision,
             retrieval_hit_at_k=retrieval_hit_at_k,
             generation_latency_ms=generation_latency_ms,
@@ -468,9 +492,19 @@ def main() -> None:
         default=None,
         help="Number of dense retrieval candidates to retain before optional reranking.",
     )
+    parser.add_argument(
+        "--structural-filter-enabled",
+        action="store_true",
+        default=None,
+        help="Exclude structural decoy chunks before reranking.",
+    )
     args = parser.parse_args()
 
-    report = run_evaluation(args.questions, candidate_k=args.candidate_k)
+    report = run_evaluation(
+        args.questions,
+        candidate_k=args.candidate_k,
+        structural_filter_enabled=args.structural_filter_enabled,
+    )
     output = json.dumps(report, indent=2)
     if args.output is not None:
         args.output.write_text(output, encoding="utf-8")

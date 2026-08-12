@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     retrieval_top_k_default: int = Field(default=5, ge=1, le=50)
     rerank_candidate_k: int = Field(default=20, ge=1, le=100)
     retrieval_similarity_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    retrieval_structural_filter_enabled: bool = False
 
     def ensure_data_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
