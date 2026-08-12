@@ -172,9 +172,7 @@ def _tokenize(text: str) -> set[str]:
         "to",
         "with",
     }
-    return {
-        token for token in re.findall(r"[a-z0-9]+", text.lower()) if token not in stopwords
-    }
+    return {token for token in re.findall(r"[a-z0-9]+", text.lower()) if token not in stopwords}
 
 
 def _question_relevant_chunks(question: QuestionSpec) -> dict[str, int]:
@@ -205,13 +203,11 @@ def _validate_question(
             errors.append("gold evidence chunk_id must not be empty")
         if evidence.page_number < 1:
             errors.append(
-                "gold evidence page_number must be positive "
-                f"for chunk_id={evidence.chunk_id}"
+                f"gold evidence page_number must be positive for chunk_id={evidence.chunk_id}"
             )
         if not evidence.text_span.strip():
             errors.append(
-                "gold evidence text_span must not be empty "
-                f"for chunk_id={evidence.chunk_id}"
+                f"gold evidence text_span must not be empty for chunk_id={evidence.chunk_id}"
             )
         if known_chunks is not None:
             if evidence.chunk_id not in known_chunks:
@@ -267,6 +263,9 @@ def _recall_at_k(
 ) -> float | None:
     if not relevant_chunks:
         return None
+    if k > len(chunks):
+        return None
+
     window = chunks[:k]
     return 1.0 if any(chunk.chunk_id in relevant_chunks for chunk in window) else 0.0
 
@@ -287,6 +286,8 @@ def _ndcg_at_k(
 ) -> float | None:
     if not relevant_chunks:
         return None
+    if k > len(chunks):
+        return None
 
     def dcg(scores: Sequence[int]) -> float:
         value = 0.0
@@ -299,8 +300,10 @@ def _ndcg_at_k(
     gains = [relevant_chunks.get(chunk.chunk_id, 0) for chunk in chunks[:k]]
     ideal_gains = sorted(relevant_chunks.values(), reverse=True)[:k]
     ideal_dcg = dcg(ideal_gains)
+
     if ideal_dcg == 0.0:
         return None
+
     return dcg(gains) / ideal_dcg
 
 
@@ -321,7 +324,7 @@ def _mean_or_none(values: Sequence[float | None]) -> float | None:
     return mean(non_null) if non_null else None
 
 
-def run_evaluation(questions_path: Path) -> dict[str, object]:
+def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> dict[str, object]:
     settings = get_settings()
     services = Services.build(settings)
     questions = _load_questions(questions_path)
@@ -340,6 +343,7 @@ def run_evaluation(questions_path: Path) -> dict[str, object]:
         retrieval = services.retriever.retrieve(
             item.question,
             top_k=settings.retrieval_top_k_default,
+            candidate_k=candidate_k,
             similarity_threshold=settings.retrieval_similarity_threshold,
             filters=filters,
         )
@@ -438,9 +442,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PDF RAG evaluation suite.")
     parser.add_argument("--questions", type=Path, default=Path("eval/questions.json"))
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--candidate-k",
+        type=int,
+        default=None,
+        help="Number of dense retrieval candidates to retain before optional reranking.",
+    )
     args = parser.parse_args()
 
-    report = run_evaluation(args.questions)
+    report = run_evaluation(args.questions, candidate_k=args.candidate_k)
     output = json.dumps(report, indent=2)
     if args.output is not None:
         args.output.write_text(output, encoding="utf-8")

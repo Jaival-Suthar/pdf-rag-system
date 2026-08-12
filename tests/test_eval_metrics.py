@@ -163,21 +163,68 @@ def test_strict_metrics_use_exact_chunk_id_matches() -> None:
     retrieved_chunks = [_chunk("distractor"), _chunk("gold-chunk")]
 
     assert _recall_at_k(retrieved_chunks, relevant_chunks, 1) == 0.0
-    assert _recall_at_k(retrieved_chunks, relevant_chunks, 5) == 1.0
-    assert _recall_at_k(retrieved_chunks, relevant_chunks, 10) == 1.0
-    assert _recall_at_k(retrieved_chunks, relevant_chunks, 20) == 1.0
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 2) == 1.0
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 5) is None
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 10) is None
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 20) is None
+
     assert _mrr(retrieved_chunks, relevant_chunks) == 0.5
-    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 5) == 0.6309297535714575
-    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 10) == 0.6309297535714575
+
+    assert (
+        _ndcg_at_k(
+            retrieved_chunks,
+            relevant_chunks,
+            2,
+        )
+        == 0.6309297535714575
+    )
+    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 5) is None
+    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 10) is None
+
+
+def test_metrics_return_none_when_k_exceeds_available_chunks() -> None:
+    relevant_chunks = {"gold-chunk": 1}
+    retrieved_chunks = [
+        _chunk("distractor"),
+        _chunk("gold-chunk"),
+    ]
+
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 2) == 1.0
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 5) is None
+    assert _recall_at_k(retrieved_chunks, relevant_chunks, 20) is None
+
+    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 2) is not None
+    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 5) is None
+    assert _ndcg_at_k(retrieved_chunks, relevant_chunks, 20) is None
 
 
 def test_candidate_recall_is_distinct_from_final_recall() -> None:
     relevant_chunks = {"gold-chunk": 1}
-    candidate_chunks = [_chunk("distractor"), _chunk("gold-chunk")]
-    final_chunks = [_chunk("distractor")]
+    candidate_chunks = [
+        _chunk("distractor-1"),
+        _chunk("distractor-2"),
+        _chunk("gold-chunk"),
+        _chunk("distractor-3"),
+        _chunk("distractor-4"),
+    ]
+    final_chunks = [
+        _chunk("distractor-1"),
+        _chunk("distractor-2"),
+        _chunk("distractor-3"),
+        _chunk("distractor-4"),
+        _chunk("distractor-5"),
+    ]
 
-    candidate_recall_at_5 = _recall_at_k(candidate_chunks, relevant_chunks, 5)
-    final_recall_at_5 = _recall_at_k(final_chunks, relevant_chunks, 5)
+    candidate_recall_at_5 = _recall_at_k(
+        candidate_chunks,
+        relevant_chunks,
+        5,
+    )
+    final_recall_at_5 = _recall_at_k(
+        final_chunks,
+        relevant_chunks,
+        5,
+    )
 
     assert candidate_recall_at_5 == 1.0
     assert final_recall_at_5 == 0.0

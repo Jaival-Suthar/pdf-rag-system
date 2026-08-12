@@ -58,6 +58,7 @@ class Retriever:
         self,
         query: str,
         top_k: int | None = None,
+        candidate_k: int | None = None,
         similarity_threshold: float | None = None,
         filters: RetrievalFilters | None = None,
     ) -> RetrievalResult:
@@ -70,11 +71,13 @@ class Retriever:
 
         reranking_enabled = self._reranker is not None and self._settings.re_rank_enabled
 
-        candidate_k = (
-            max(effective_top_k, self._settings.rerank_candidate_k)
-            if reranking_enabled
-            else effective_top_k
+        effective_candidate_k = (
+            candidate_k
+            if candidate_k is not None
+            else max(effective_top_k, self._settings.rerank_candidate_k)
         )
+
+        effective_candidate_k = max(effective_top_k, effective_candidate_k)
 
         embedding_start = time.perf_counter()
         query_embedding = self._embedder.embed_texts([query])[0]
@@ -83,7 +86,7 @@ class Retriever:
         retrieval_start = time.perf_counter()
         chunks = self._vectorstore.search(
             query_embedding,
-            top_k=candidate_k,
+            top_k=effective_candidate_k,
             similarity_threshold=effective_threshold,
             filters=filters,
         )
@@ -110,6 +113,8 @@ class Retriever:
                     reverse=True,
                 )[:effective_top_k]
             ]
+        else:
+            chunks = candidate_chunks[:effective_top_k]
 
         logger.info(
             "retrieval_completed",
@@ -117,7 +122,7 @@ class Retriever:
                 "embedding_latency_ms": embedding_latency_ms,
                 "retrieval_latency_ms": retrieval_latency_ms,
                 "rerank_latency_ms": rerank_latency_ms,
-                "candidate_k": candidate_k,
+                "candidate_k": effective_candidate_k,
                 "final_top_k": effective_top_k,
                 "reranker_enabled": reranking_enabled,
                 "total_ms": (embedding_latency_ms + retrieval_latency_ms + rerank_latency_ms),
@@ -133,7 +138,7 @@ class Retriever:
             retrieval_config=RetrievalConfig(
                 embedding_model_name=self._settings.embedding_model_name,
                 embedding_version=self._settings.embedding_version,
-                candidate_k=candidate_k,
+                candidate_k=effective_candidate_k,
                 top_k=effective_top_k,
                 similarity_threshold=effective_threshold,
                 reranker_enabled=reranking_enabled,

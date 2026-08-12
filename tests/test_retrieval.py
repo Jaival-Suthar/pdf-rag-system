@@ -152,11 +152,90 @@ def test_retriever_preserves_order_when_reranking_is_disabled(
         rerank_candidate_k=5,
     )
     vectorstore = VectorStore(settings)
-    retriever = Retriever(settings, _FakeEmbedder(), vectorstore, reranker=_FakeReranker())
+    retriever = Retriever(
+        settings,
+        _FakeEmbedder(),
+        vectorstore,
+        reranker=_FakeReranker(),
+    )
 
-    result = retriever.retrieve("query", top_k=2, similarity_threshold=0.3)
+    result = retriever.retrieve(
+        "query",
+        top_k=2,
+        candidate_k=3,
+        similarity_threshold=0.0,
+    )
 
     assert [chunk.doc_id for chunk in result.chunks] == ["doc-a", "doc-b"]
+    assert len(result.candidate_chunks) == 3
+    assert len(result.chunks) == 2
+    assert result.retrieval_config.candidate_k == 3
+    assert result.retrieval_config.top_k == 2
+    assert result.retrieval_config.reranker_enabled is False
+
+
+def test_retriever_supports_candidate_pool_larger_than_top_k_when_reranking_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeClient()
+
+    def fake_qdrant_client(url: str) -> _FakeClient:
+        _ = url
+        return fake_client
+
+    monkeypatch.setattr("app.core.vectorstore.QdrantClient", fake_qdrant_client)
+
+    settings = Settings(
+        qdrant_url="http://example",
+        re_rank_enabled=False,
+    )
+    vectorstore = VectorStore(settings)
+    retriever = Retriever(
+        settings,
+        _FakeEmbedder(),
+        vectorstore,
+        reranker=_FakeReranker(),
+    )
+
+    result = retriever.retrieve(
+        "query",
+        top_k=2,
+        candidate_k=3,
+    )
+
+    assert len(result.candidate_chunks) == 3
+    assert len(result.chunks) == 2
+    assert result.retrieval_config.candidate_k == 3
+    assert result.retrieval_config.top_k == 2
+    assert result.retrieval_config.reranker_enabled is False
+
+
+def test_retriever_never_uses_candidate_pool_smaller_than_top_k(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeClient()
+
+    def fake_qdrant_client(url: str) -> _FakeClient:
+        _ = url
+        return fake_client
+
+    monkeypatch.setattr("app.core.vectorstore.QdrantClient", fake_qdrant_client)
+
+    settings = Settings(
+        qdrant_url="http://example",
+        re_rank_enabled=False,
+    )
+    vectorstore = VectorStore(settings)
+    retriever = Retriever(settings, _FakeEmbedder(), vectorstore)
+
+    result = retriever.retrieve(
+        "query",
+        top_k=3,
+        candidate_k=1,
+    )
+
+    assert result.retrieval_config.candidate_k == 3
+    assert result.retrieval_config.top_k == 3
 
 
 def test_retriever_uses_reranker_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,3 +258,6 @@ def test_retriever_uses_reranker_when_enabled(monkeypatch: pytest.MonkeyPatch) -
     result = retriever.retrieve("query", top_k=2, similarity_threshold=0.3)
 
     assert [chunk.doc_id for chunk in result.chunks] == ["doc-b", "doc-a"]
+    assert result.retrieval_config.candidate_k == 20
+    assert result.retrieval_config.top_k == 2
+    assert result.retrieval_config.reranker_enabled is True
