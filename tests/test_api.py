@@ -51,6 +51,7 @@ class FakeRetriever:
         return RetrievalResult(
             chunks=[chunk],
             candidate_chunks=[chunk],
+            candidate_reranker_scores=None,
             embedding_latency_ms=3,
             retrieval_latency_ms=4,
             rerank_latency_ms=0,

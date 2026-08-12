@@ -312,10 +312,12 @@ def _serialize_chunk(
     *,
     rank: int | None = None,
     rank_label: str = "rank",
+    reranker_score: float | None = None,
 ) -> dict[str, object]:
     payload = asdict(chunk)
     if rank is not None:
         payload[rank_label] = rank
+    payload["reranker_score"] = reranker_score
     return payload
 
 
@@ -357,6 +359,15 @@ def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> d
         faithfulness, context_utilisation = _score_answer(answer, context_text)
 
         relevant_chunks = _question_relevant_chunks(item)
+        reranker_score_by_chunk_id: dict[str, float | None] = {}
+        if retrieval.candidate_reranker_scores is not None:
+            for candidate_chunk, reranker_score in zip(
+                retrieval.candidate_chunks,
+                retrieval.candidate_reranker_scores,
+                strict=True,
+            ):
+                reranker_score_by_chunk_id[candidate_chunk.chunk_id] = reranker_score
+
         candidate_recall = {
             "5": _recall_at_k(retrieval.candidate_chunks, relevant_chunks, 5),
             "20": _recall_at_k(retrieval.candidate_chunks, relevant_chunks, 20),
@@ -379,11 +390,20 @@ def run_evaluation(questions_path: Path, *, candidate_k: int | None = None) -> d
             ndcg_at_5=_ndcg_at_k(retrieval.chunks, relevant_chunks, 5),
             ndcg_at_10=_ndcg_at_k(retrieval.chunks, relevant_chunks, 10),
             candidate_chunks=[
-                _serialize_chunk(chunk, rank=index + 1, rank_label="candidate_rank")
+                _serialize_chunk(
+                    chunk,
+                    rank=index + 1,
+                    rank_label="candidate_rank",
+                    reranker_score=reranker_score_by_chunk_id.get(chunk.chunk_id),
+                )
                 for index, chunk in enumerate(retrieval.candidate_chunks)
             ],
             retrieved_chunks=[
-                _serialize_chunk(chunk, rank=index + 1)
+                _serialize_chunk(
+                    chunk,
+                    rank=index + 1,
+                    reranker_score=reranker_score_by_chunk_id.get(chunk.chunk_id),
+                )
                 for index, chunk in enumerate(retrieval.chunks)
             ],
             precision=precision,

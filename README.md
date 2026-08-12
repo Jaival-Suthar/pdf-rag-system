@@ -106,30 +106,54 @@ Question
   -> call Inference Lab (M0)
 ```
 
-## M1 Evaluation
+## M1 Research History
 
-M1 evaluation used one 214-page document and 35 controlled questions spanning factual, conceptual, paraphrased, section-specific, multi-part, chunk-boundary-sensitive, and deliberately unanswerable prompts.
+### `research(m1): establish retrieval evaluation infrastructure`
 
-| Run | Retrieval | Reranking | Candidate K | Purpose |
-| --- | --- | --- | --- | --- |
-| Run 1 | Dense | Off | -- | Baseline |
-| Run 2 | Dense | On | 5 | Test reranking |
-| Run 3 | Dense | On | 20 | Test larger candidate pool |
+M1 evaluation uses one 214-page document and 35 controlled questions spanning factual, conceptual, paraphrased, section-specific, multi-part, chunk-boundary-sensitive, and deliberately unanswerable prompts.
 
-The final context size remained fixed at `top_k=5`. Stage-level latency instrumentation recorded embedding, retrieval, rerank, LLM, and total timing.
+The benchmark artifacts record:
 
-The evaluation includes heuristic retrieval precision and retrieval-hit metrics based on expected document IDs and chunk keywords. Passage-level machine-checked gold evidence was not established for every question, so these metrics do not constitute strict passage-level Recall@k, MRR, or NDCG measurements.
+- machine-checked gold evidence
+- retrieval precision and retrieval-hit metrics
+- strict recall at `k`
+- candidate recall
+- MRR
+- nDCG
+- stage-level latency
+- validation errors for malformed question/evidence specifications
+- reproducible JSON artifacts with per-question `candidate_chunks` and `retrieved_chunks`
 
-## M1 Findings
+The baseline dense evaluation artifact is [`eval/results/m1-baseline-dense-v2.json`](./eval/results/m1-baseline-dense-v2.json), which reports:
 
-- Reranking changed Top-1 on 27/35 queries (77.1%), but this measures ranking changes, not improvement.
-- Reranking added approximately 2.9 seconds of mean overhead.
-- Qdrant retrieval remained approximately 8-9 ms p50.
-- Increasing `rerank_candidate_k` to 20 changed only 6/35 Top-1 results and did not consistently improve retrieval.
-- Contents and Index pages sometimes ranked highly despite being weak evidence.
-- At least one generated answer was plausible but factually inconsistent with the source.
+- `questions`: 35
+- `strict_metrics_questions`: 30
+- `retrieval_precision`: 0.12
+- `retrieval_hit_at_k`: 0.37142857142857144
+- `recall_at_1`: 0.36666666666666664
+- `recall_at_5`: 0.6666666666666666
+- `mrr`: 0.49444444444444446
+- `ndcg_at_5`: 0.42744436929724366
+- `latency_ms`: 14133.742857142857
 
-M1 did not establish that reranking universally improves retrieval quality. It established measurable trade-offs and concrete failure modes.
+### `research(m1): benchmark dense retrieval and reranking`
+
+The benchmark matrix was designed to separate candidate depth from reranking.
+
+| Checkpoint | Artifact | Candidate K | Reranking | Retrieval Precision | Retrieval Hit@K | Recall@1 | Recall@5 | MRR | nDCG@5 | Latency (ms) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Dense k5 | [`m1-baseline-dense-v2.json`](./eval/results/m1-baseline-dense-v2.json) | 5 | Off | 0.12 | 0.37142857142857144 | 0.36666666666666664 | 0.6666666666666666 | 0.49444444444444446 | 0.42744436929724366 | 14133.742857142857 |
+| Dense k20 | [`m1-dense-k20-v2.json`](./eval/results/m1-dense-k20-v2.json) | 20 | Off | 0.12 | 0.37142857142857144 | 0.36666666666666664 | 0.6666666666666666 | 0.49444444444444446 | 0.42744436929724366 | 13981.8 |
+| Rerank k5 | [`m1-rerank-k5-v2.json`](./eval/results/m1-rerank-k5-v2.json) | 5 | On | 0.12 | 0.37142857142857144 | 0.4 | 0.6666666666666666 | 0.5066666666666667 | 0.4292780273639158 | 16342.514285714286 |
+| Rerank k20 | [`m1-rerank-k20-v2.json`](./eval/results/m1-rerank-k20-v2.json) | 20 | On | 0.13142857142857142 | 0.42857142857142855 | 0.2 | 0.6666666666666666 | 0.39111111111111113 | 0.3478832487999445 | 20919.485714285714 |
+
+The rerank-k20 run showed that widening the candidate pool can recover more candidate evidence, but the reranker can still move correct chunks out of the final top-5 context.
+
+### `RQ3: When correct evidence exists in candidate-k=20, why can reranking lose it from final top-k=5?`
+
+Current working hypothesis: the reranker may overvalue semantic or query similarity and promote structurally irrelevant passages such as Contents, Index, introductory, or metadata-heavy chunks over substantive evidence.
+
+This is a hypothesis only. It is not yet a conclusion, and the repository does not apply any structural filtering or ranking intervention.
 
 ## Setup
 

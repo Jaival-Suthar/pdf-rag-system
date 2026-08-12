@@ -130,6 +130,7 @@ def test_retriever_applies_threshold_and_deterministic_order(
     assert [chunk.doc_id for chunk in result.chunks] == ["doc-a", "doc-b"]
     assert result.chunks[0].score == 1.0
     assert result.chunks[1].score == 1.0
+    assert result.candidate_reranker_scores is None
     assert fake_client.search_calls
     assert fake_client.search_calls[0]["query_filter"] is not None
 
@@ -169,6 +170,7 @@ def test_retriever_preserves_order_when_reranking_is_disabled(
     assert [chunk.doc_id for chunk in result.chunks] == ["doc-a", "doc-b"]
     assert len(result.candidate_chunks) == 3
     assert len(result.chunks) == 2
+    assert result.candidate_reranker_scores is None
     assert result.retrieval_config.candidate_k == 3
     assert result.retrieval_config.top_k == 2
     assert result.retrieval_config.reranker_enabled is False
@@ -205,6 +207,7 @@ def test_retriever_supports_candidate_pool_larger_than_top_k_when_reranking_disa
 
     assert len(result.candidate_chunks) == 3
     assert len(result.chunks) == 2
+    assert result.candidate_reranker_scores is None
     assert result.retrieval_config.candidate_k == 3
     assert result.retrieval_config.top_k == 2
     assert result.retrieval_config.reranker_enabled is False
@@ -258,6 +261,7 @@ def test_retriever_uses_reranker_when_enabled(monkeypatch: pytest.MonkeyPatch) -
     result = retriever.retrieve("query", top_k=2, similarity_threshold=0.3)
 
     assert [chunk.doc_id for chunk in result.chunks] == ["doc-b", "doc-a"]
+    assert result.candidate_reranker_scores == [1.0, 2.0]
     assert result.retrieval_config.candidate_k == 20
     assert result.retrieval_config.top_k == 2
     assert result.retrieval_config.reranker_enabled is True

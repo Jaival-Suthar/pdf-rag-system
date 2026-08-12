@@ -27,6 +27,7 @@ class RetrievalConfig:
 class RetrievalResult:
     chunks: list[RetrievedChunk]
     candidate_chunks: list[RetrievedChunk]
+    candidate_reranker_scores: list[float | None] | None
     embedding_latency_ms: int
     retrieval_latency_ms: int
     rerank_latency_ms: int
@@ -94,6 +95,7 @@ class Retriever:
 
         rerank_latency_ms = 0
         candidate_chunks = list(chunks)
+        candidate_reranker_scores: list[float | None] | None = None
 
         if reranking_enabled and self._reranker is not None:
             rerank_start = time.perf_counter()
@@ -102,6 +104,10 @@ class Retriever:
                 query,
                 [chunk.text for chunk in chunks],
             )
+            candidate_reranker_scores = [None for _ in chunks]
+            for ranked_chunk in ranked_passages:
+                if 0 <= ranked_chunk.index < len(candidate_reranker_scores):
+                    candidate_reranker_scores[ranked_chunk.index] = ranked_chunk.score
 
             rerank_latency_ms = int((time.perf_counter() - rerank_start) * 1000)
 
@@ -132,6 +138,7 @@ class Retriever:
         return RetrievalResult(
             chunks=chunks,
             candidate_chunks=candidate_chunks,
+            candidate_reranker_scores=candidate_reranker_scores,
             embedding_latency_ms=embedding_latency_ms,
             retrieval_latency_ms=retrieval_latency_ms,
             rerank_latency_ms=rerank_latency_ms,
