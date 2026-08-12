@@ -38,6 +38,7 @@ include = ["app*", "eval*", "benchmarks*"]
 
 [project.scripts]
 pdf-rag-eval = "eval.evaluate:main"
+pdf-rag-export-chunks = "eval.export_chunks:main"
 pdf-rag-benchmark = "benchmarks.retrieval_benchmark:main"
 
 [tool.pytest.ini_options]

@@ -13,11 +13,24 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class RetrievalConfig:
+    embedding_model_name: str
+    embedding_version: str
+    candidate_k: int
+    top_k: int
+    similarity_threshold: float
+    reranker_enabled: bool
+    reranker_model_name: str | None
+
+
+@dataclass(frozen=True)
 class RetrievalResult:
     chunks: list[RetrievedChunk]
+    candidate_chunks: list[RetrievedChunk]
     embedding_latency_ms: int
     retrieval_latency_ms: int
     rerank_latency_ms: int
+    retrieval_config: RetrievalConfig
 
 
 class EmbedderLike(Protocol):
@@ -77,6 +90,7 @@ class Retriever:
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
         rerank_latency_ms = 0
+        candidate_chunks = list(chunks)
 
         if reranking_enabled and self._reranker is not None:
             rerank_start = time.perf_counter()
@@ -112,7 +126,19 @@ class Retriever:
 
         return RetrievalResult(
             chunks=chunks,
+            candidate_chunks=candidate_chunks,
             embedding_latency_ms=embedding_latency_ms,
             retrieval_latency_ms=retrieval_latency_ms,
             rerank_latency_ms=rerank_latency_ms,
+            retrieval_config=RetrievalConfig(
+                embedding_model_name=self._settings.embedding_model_name,
+                embedding_version=self._settings.embedding_version,
+                candidate_k=candidate_k,
+                top_k=effective_top_k,
+                similarity_threshold=effective_threshold,
+                reranker_enabled=reranking_enabled,
+                reranker_model_name=(
+                    self._settings.re_rank_model_name if reranking_enabled else None
+                ),
+            ),
         )

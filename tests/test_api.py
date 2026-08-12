@@ -49,7 +49,24 @@ class FakeRetriever:
             source_path="/tmp/sample.pdf",
         )
         return RetrievalResult(
-            chunks=[chunk], embedding_latency_ms=3, retrieval_latency_ms=4, rerank_latency_ms=0
+            chunks=[chunk],
+            candidate_chunks=[chunk],
+            embedding_latency_ms=3,
+            retrieval_latency_ms=4,
+            rerank_latency_ms=0,
+            retrieval_config=type(
+                "RetrievalConfig",
+                (),
+                {
+                    "embedding_model_name": "model",
+                    "embedding_version": "v1",
+                    "candidate_k": 1,
+                    "top_k": 1,
+                    "similarity_threshold": 0.0,
+                    "reranker_enabled": False,
+                    "reranker_model_name": None,
+                },
+            )(),
         )
 
 
