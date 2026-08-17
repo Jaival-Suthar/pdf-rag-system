@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from fastapi.testclient import TestClient
 
 from app.core.prompt_builder import BuiltPrompt
-from app.core.retrieval import RetrievalResult
+from app.core.retrieval import RetrievalConfig, RetrievalResult
 from app.core.vectorstore import RetrievedChunk
 from app.main import app
 from app.models.schemas import ChatRequest
@@ -49,7 +49,25 @@ class FakeRetriever:
             source_path="/tmp/sample.pdf",
         )
         return RetrievalResult(
-            chunks=[chunk], embedding_latency_ms=3, retrieval_latency_ms=4, rerank_latency_ms=0
+            chunks=[chunk],
+            candidate_chunks=[chunk],
+            filtered_candidate_chunks=[chunk],
+            original_candidate_count=1,
+            filtered_candidate_count=1,
+            candidate_reranker_scores=None,
+            embedding_latency_ms=3,
+            retrieval_latency_ms=4,
+            rerank_latency_ms=0,
+            retrieval_config=RetrievalConfig(
+                embedding_model_name="model",
+                embedding_version="v1",
+                candidate_k=1,
+                top_k=1,
+                similarity_threshold=0.0,
+                reranker_enabled=False,
+                reranker_model_name=None,
+                structural_filter_enabled=False,
+            ),
         )
 
 

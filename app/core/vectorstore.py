@@ -190,6 +190,53 @@ class VectorStore:
             points_selector=qmodels.FilterSelector(filter=query_filter),
         )
 
+    def list_chunks_for_doc_id(self, doc_id: str) -> list[dict[str, object]]:
+        self.ensure_collection()
+        query_filter = qmodels.Filter(
+            must=cast(
+                Any,
+                [qmodels.FieldCondition(key="doc_id", match=qmodels.MatchValue(value=doc_id))],
+            )
+        )
+
+        offset: Any = None
+        exported: list[dict[str, object]] = []
+
+        while True:
+            points, offset = self._client.scroll(
+                collection_name=self._settings.qdrant_collection,
+                scroll_filter=query_filter,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if not points:
+                break
+            for point in points:
+                payload = point.payload or {}
+                section_title = payload.get("section_title")
+                chunk_index = cast(int, payload.get("chunk_index", 0))
+                page_number = cast(int, payload.get("page_number", 0))
+                exported.append(
+                    {
+                        "doc_id": str(payload.get("doc_id", "")),
+                        "document_fingerprint": str(payload.get("document_fingerprint", "")),
+                        "filename": str(payload.get("filename", "")),
+                        "chunk_id": str(payload.get("chunk_id", "")),
+                        "chunk_index": chunk_index,
+                        "page_number": page_number,
+                        "text": str(payload.get("text", "")),
+                        "section_title": section_title if isinstance(section_title, str) else None,
+                        "source_path": str(payload.get("source_path", "")),
+                    }
+                )
+            if offset is None:
+                break
+
+        exported.sort(key=lambda item: cast(int, item["chunk_index"]))
+        return exported
+
     def search(
         self,
         vector: list[float],
@@ -199,13 +246,12 @@ class VectorStore:
     ) -> list[RetrievedChunk]:
         self.ensure_collection()
         query_filter = _build_filter(filters)
-        candidate_limit = max(top_k * 3, top_k)
         client = cast(Any, self._client)
         if hasattr(client, "query_points"):
             search_result = client.query_points(
                 collection_name=self._settings.qdrant_collection,
                 query=vector,
-                limit=candidate_limit,
+                limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
                 with_vectors=False,
@@ -215,7 +261,7 @@ class VectorStore:
             results = client.search(
                 collection_name=self._settings.qdrant_collection,
                 query_vector=vector,
-                limit=candidate_limit,
+                limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
                 with_vectors=False,
